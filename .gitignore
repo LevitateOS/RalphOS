@@ -1,0 +1,3 @@
+# Local build/artifact directory (often symlinked to monorepo .artifacts/out)
+output
+
