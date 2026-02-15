@@ -34,7 +34,6 @@ RalphOS being "based on LevitateOS" does not mean "same runtime contract".
 Kernel/userspace provenance notes:
 
 - RalphOS intentionally builds on the **LevitateOS (glibc/Rocky) base**; this is a deliberate choice for compatibility with headless developer tooling.
-- RalphOS is **not** intended to use the DEV-only kernel "theft mode" used by Alpine-based variants to speed iteration.
   - RalphOS uses its own kernel configuration (`RalphOS/kconfig`) tailored for a QCOW2-first headless sandbox host (virtio + serial console, no WiFi/BT/audio/media/USB/input/GPU, KVM enabled).
 
 ## Immutable Base: A/B Slots (Chosen)
