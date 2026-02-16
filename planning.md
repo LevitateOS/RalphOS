@@ -25,7 +25,7 @@ See also: `RalphOS/SECURITY_MODEL.md` (draft SSOT for the end-to-end security mo
 
 RalphOS being "based on LevitateOS" does not mean "same runtime contract".
 
-- LevitateOS provides the build engine, kernel/userspace recipes, artifact pipeline, and checkpoint harness integration.
+- LevitateOS provides the build engine, kernel/userspace recipes, artifact pipeline, and stage harness integration.
 - RalphOS is a *profile/variant* that changes the runtime contract:
   - Immutable root
   - State strictly under `/var` (or an explicit data partition)
@@ -130,14 +130,14 @@ RalphOS needs an audit trail suitable for "run a company" automation:
 - secret reads (what scope, which agent/job)
 - admin actions (updates, policy changes, break-glass)
 
-## Checkpoints (How This Affects Our Repo)
+## Stages (How This Affects Our Repo)
 
-RalphOS will show up in the checkpoint tables for:
+RalphOS will show up in the stage tables for:
 
 - `x86_64`: LevitateOS, RalphOS, AcornOS, IuppiterOS
 - `aarch64`: LevitateOS, RalphOS, AcornOS
 
-RalphOS-specific "definition of done" will likely differ at CP3+ because the OS is not user-interactive and may not support the same "installed desktop" flows.
+RalphOS-specific "definition of done" will likely differ at Stage 03+ because the OS is not user-interactive and may not support the same "installed desktop" flows.
 
 ## Open Questions
 

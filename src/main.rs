@@ -1,4 +1,4 @@
-//! RalphOS CP0 builder (legacy transition entrypoint).
+//! RalphOS Stage 00 builder (legacy transition entrypoint).
 //!
 //! # Deprecation Notice
 //!
@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "ralphos")]
-#[command(about = "RalphOS CP0 builder")]
+#[command(about = "RalphOS Stage 00 builder")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -23,11 +23,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build CP0 artifacts (Ralph kernel-verified initramfs + bootable ISO)
+    /// Build Stage 00 artifacts (Ralph kernel-verified initramfs + bootable ISO)
     Build,
-    /// Build only the ISO path (same as `build` for CP0 parity)
+    /// Build only the ISO path (same as `build` for Stage 00 parity)
     Iso,
-    /// Show CP0 artifact status
+    /// Show Stage 00 artifact status
     Status,
 }
 
@@ -45,7 +45,7 @@ struct BasePayload {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command.unwrap_or(Commands::Build) {
-        Commands::Build | Commands::Iso => build_cp0(),
+        Commands::Build | Commands::Iso => build_stage_00(),
         Commands::Status => print_status(),
     };
 
@@ -55,7 +55,7 @@ fn main() {
     }
 }
 
-fn build_cp0() -> Result<()> {
+fn build_stage_00() -> Result<()> {
     let base_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let out_dir = distro_builder::artifact_store::central_output_dir_for_distro(&base_dir);
     fs::create_dir_all(&out_dir).with_context(|| format!("Creating {}", out_dir.display()))?;
@@ -72,7 +72,7 @@ fn build_cp0() -> Result<()> {
     eprintln!("[step] Create RalphOS ISO");
     let iso = build_ralph_iso(&out_dir, &kernel.vmlinuz, &initramfs, &payload)?;
 
-    eprintln!("[ok] RalphOS CP0 ready");
+    eprintln!("[ok] RalphOS Stage 00 ready");
     eprintln!("  kernel.release: {}", kernel.release);
     eprintln!("  initramfs: {}", initramfs.display());
     eprintln!("  iso: {}", iso.display());
@@ -89,7 +89,7 @@ fn print_status() -> Result<()> {
     let iso = out_dir.join(distro_spec::ralph::ISO_FILENAME);
     let initramfs = out_dir.join(distro_spec::ralph::INITRAMFS_LIVE_OUTPUT);
 
-    println!("RalphOS CP0 status");
+    println!("RalphOS Stage 00 status");
     match verify_ralph_kernel(&out_dir) {
         Ok(kernel) => {
             println!("  kernel:     OK ({})", kernel.release);
@@ -107,7 +107,7 @@ fn print_status() -> Result<()> {
             println!("  rootfs:     {}", p.rootfs.display());
             match p.live_overlay {
                 Some(path) => println!("  overlay:    {}", path.display()),
-                None => println!("  overlay:    (not found; optional for CP0)"),
+                None => println!("  overlay:    (not found; optional for Stage 00)"),
             }
         }
         Err(e) => println!("  payload:    MISSING ({:#})", e),
@@ -414,7 +414,7 @@ fn build_ralph_initramfs(base_dir: &Path, out_dir: &Path, modules_dir: &Path) ->
             .iter()
             .map(|s| s.to_string())
             .collect(),
-        // RalphOS CP0 currently targets QEMU-first boot parity.
+        // RalphOS Stage 00 currently targets QEMU-first boot parity.
         // Its kernel config may intentionally omit NVMe modules; keep the
         // live preset strict, but drop nvme{,-core} for now.
         module_preset: ModulePreset::Custom(ralph_live_module_names()),
