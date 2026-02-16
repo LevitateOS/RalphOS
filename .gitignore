@@ -1,3 +1,15 @@
-# Local build/artifact directory (often symlinked to monorepo .artifacts/out)
-output
+# Downloads (Rocky ISO, linux source, extracted files)
+downloads/
 
+# Build output
+output
+squashfs-root/
+
+# Local configuration (user-specific paths)
+.env
+
+# Temporary files
+*.tmp
+
+# Target files
+target/

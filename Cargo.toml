@@ -1,0 +1,17 @@
+[package]
+name = "ralphos"
+version = "0.1.0"
+edition = "2021"
+description = "RalphOS CP0 builder - bootable ISO from Ralph kernel and Rocky-based payload"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/LevitateOS/RalphOS"
+keywords = ["linux", "iso", "headless", "ralphos"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
+distro-spec = { path = "../distro-spec" }
+distro-builder = { path = "../distro-builder" }
+recinit = { path = "../tools/recinit" }
+reciso = { path = "../tools/reciso" }

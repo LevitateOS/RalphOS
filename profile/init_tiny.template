@@ -1,0 +1,272 @@
+#!/bin/busybox sh
+# RalphOS Tiny Initramfs
+# Mounts EROFS + overlay, then switch_root to live system
+#
+# REQUIREMENTS:
+# - Kernel built with CONFIG_EROFS_FS=y, CONFIG_BLK_DEV_LOOP=y, CONFIG_OVERLAY_FS=y
+# - ISO labeled "{{ISO_LABEL}}" (set by xorriso -V)
+# - Kernel cmdline: root=LABEL={{ISO_LABEL}}
+#
+# BOOT FLOW:
+# 1. GRUB loads kernel + this initramfs
+# 2. Kernel unpacks initramfs to rootfs, runs /init (this script)
+# 3. Mount /proc, /sys, /dev
+# 4. Find boot device by looking for /live/filesystem.erofs
+# 5. Mount EROFS read-only
+# 6. Create overlay (erofs lower + tmpfs upper)
+# 7. switch_root to overlay
+# 8. systemd takes over as PID 1
+
+# Debug: print every command
+busybox echo "=== INIT STARTING ==="
+
+# Minimal PATH - busybox provides everything
+export PATH=/bin
+
+busybox echo "Mounting proc..."
+busybox mount -t proc proc /proc || busybox echo "FAILED: mount proc"
+
+busybox echo "Mounting sysfs..."
+busybox mount -t sysfs sysfs /sys || busybox echo "FAILED: mount sysfs"
+
+busybox echo "Mounting devtmpfs..."
+busybox mount -t devtmpfs devtmpfs /dev || busybox echo "FAILED: mount devtmpfs"
+
+busybox echo "Basic mounts done"
+
+# Load kernel modules for boot
+# The Rocky kernel has these as modules, not built-in
+busybox echo "Loading kernel modules..."
+KVER=$(busybox ls /lib/modules/ 2>/dev/null | busybox head -1)
+if [ -n "$KVER" ]; then
+    MODDIR="/lib/modules/$KVER/kernel"
+    # Load modules manually with insmod (no depmod in busybox)
+    # Order matters: dependencies first
+    # CDROM: cdrom, virtio_scsi (QEMU), sr_mod, isofs
+    # Block: virtio_blk (QEMU disk), loop
+    # Filesystems: erofs, overlay
+    for mod in {{BOOT_MODULES}}; do
+        MODPATH=$(busybox find "$MODDIR" -name "${mod}.ko*" 2>/dev/null | busybox head -1)
+        if [ -n "$MODPATH" ]; then
+            # Decompress if needed
+            case "$MODPATH" in
+                *.xz) busybox xz -d -k "$MODPATH" 2>/dev/null; MODPATH="${MODPATH%.xz}" ;;
+                *.gz) busybox gunzip -k "$MODPATH" 2>/dev/null; MODPATH="${MODPATH%.gz}" ;;
+            esac
+            if busybox insmod "$MODPATH" 2>/dev/null; then
+                busybox echo "  Loaded $mod"
+            else
+                busybox echo "  $mod: already loaded or failed"
+            fi
+        fi
+    done
+else
+    busybox echo "  No kernel modules found"
+fi
+
+busybox echo "Parsing cmdline..."
+# Parse kernel cmdline for parameters
+CMDLINE=$(busybox cat /proc/cmdline)
+busybox echo "CMDLINE: $CMDLINE"
+ROOT_LABEL=""
+EMERGENCY=""
+DEBUG="1"  # Always enable debug for now
+for param in $CMDLINE; do
+    case "$param" in
+        root=LABEL=*) ROOT_LABEL="${param#root=LABEL=}" ;;
+        emergency) EMERGENCY=1 ;;
+        debug) DEBUG=1 ;;
+    esac
+done
+
+# Default label if not specified
+[ -z "$ROOT_LABEL" ] && ROOT_LABEL="{{ISO_LABEL}}"
+busybox echo "ROOT_LABEL: $ROOT_LABEL"
+
+msg() {
+    busybox echo "initramfs: $1"
+}
+
+debug() {
+    busybox echo "DEBUG: $1"
+}
+
+emergency_shell() {
+    msg "ERROR: $1"
+    msg "Dropping to emergency shell. Type 'exit' to retry boot."
+    exec busybox sh
+}
+
+msg "LevitateOS initramfs starting..."
+msg "Searching for boot device with label '$ROOT_LABEL'..."
+
+# Wait for block devices to appear (USB/SATA may be slow)
+busybox echo "Sleeping 1s for devices..."
+busybox sleep 1
+
+# List block devices
+busybox echo "Block devices:"
+busybox ls -la /dev/sr* /dev/sd* /dev/vd* /dev/nvme* 2>/dev/null || busybox echo "(none found)"
+
+# Additional wait for slower devices
+if [ ! -e /dev/sr0 ] && [ ! -e /dev/sda ]; then
+    msg "Waiting for block devices..."
+    busybox sleep 2
+fi
+
+# Find the boot device by looking for filesystem.erofs
+# Check common device paths in order of likelihood
+BOOT_DEV=""
+DEVICES="{{BOOT_DEVICES}}"
+
+busybox echo "Searching devices: $DEVICES"
+
+for dev in $DEVICES; do
+    [ -b "$dev" ] || continue
+    debug "Trying device: $dev"
+
+    # Try mounting read-only
+    if ! busybox mount -o ro "$dev" /mnt 2>&1; then
+        debug "  Mount failed"
+        continue
+    fi
+
+    # Check if this is our boot media
+    if [ -f /mnt{{ROOTFS_PATH}} ]; then
+        BOOT_DEV="$dev"
+        msg "Found boot device: $dev"
+        break
+    fi
+
+    # Not our device, unmount and try next
+    busybox umount /mnt 2>/dev/null
+done
+
+if [ -z "$BOOT_DEV" ]; then
+    msg "ERROR: Could not find boot device with filesystem.erofs"
+    msg ""
+    msg "Kernel cmdline: $CMDLINE"
+    msg ""
+    msg "Available block devices:"
+    busybox ls -la /dev/sd* /dev/sr* /dev/vd* /dev/nvme* 2>/dev/null || msg "  (none found)"
+    msg ""
+    msg "Expected structure on boot device:"
+    msg "  {{ROOTFS_PATH}}"
+    msg ""
+    emergency_shell "Boot device not found"
+fi
+
+# Emergency shell requested via kernel cmdline?
+if [ -n "$EMERGENCY" ]; then
+    msg "Emergency shell requested via kernel cmdline."
+    msg "Boot device mounted at /mnt"
+    msg "Type 'exit' to continue boot."
+    busybox sh
+fi
+
+# Create mount points for overlay
+busybox mkdir -p /rootfs /live-overlay /overlay /overlay/upper /overlay/work /newroot
+
+# Mount EROFS read-only
+# Busybox mount doesn't always support -o loop automatically, so we set up loop device manually
+msg "Setting up loop device for EROFS..."
+
+# Create loop device node if needed
+busybox mknod /dev/loop0 b 7 0 2>/dev/null || true
+
+# Set up loop device
+busybox echo "Running losetup..."
+if ! busybox losetup /dev/loop0 "/mnt{{ROOTFS_PATH}}"; then
+    busybox echo "losetup failed, trying direct mount..."
+    # Fall back to direct mount (kernel might handle it)
+    if ! busybox mount -t erofs -o ro "/mnt{{ROOTFS_PATH}}" /rootfs; then
+        emergency_shell "Failed to mount EROFS. Is CONFIG_EROFS_FS=y in kernel?"
+    fi
+else
+    msg "Mounting EROFS from loop device..."
+    if ! busybox mount -t erofs -o ro /dev/loop0 /rootfs; then
+        emergency_shell "Failed to mount EROFS. Is CONFIG_EROFS_FS=y in kernel?"
+    fi
+fi
+busybox echo "EROFS mounted successfully"
+
+# Check for live overlay on ISO
+# This contains live-specific configs (autologin, serial console, empty root password)
+# that are NOT included in the EROFS base system
+LIVE_OVERLAY=""
+if [ -d "/mnt{{LIVE_OVERLAY_PATH}}" ]; then
+    msg "Found live overlay on ISO"
+    # Bind-mount the live overlay from ISO
+    busybox mount --bind "/mnt{{LIVE_OVERLAY_PATH}}" /live-overlay
+    LIVE_OVERLAY="/live-overlay"
+else
+    msg "No live overlay found on ISO (installed system behavior)"
+fi
+
+# Create overlay filesystem with THREE layers:
+# 1. Lower (bottom): erofs - the base system (read-only)
+# 2. Middle: live-overlay - live-specific configs from ISO (read-only)
+# 3. Upper (top): tmpfs - runtime writes (read-write)
+#
+# OverlayFS syntax: lowerdir=<higher>:<lower> (colon-separated, rightmost is lowest)
+# With live overlay: lowerdir=/live-overlay:/rootfs (mount point still named /rootfs)
+# Without live overlay: lowerdir=/rootfs (installed system)
+msg "Creating overlay filesystem..."
+busybox mount -t tmpfs -o size=50% tmpfs /overlay
+busybox mkdir -p /overlay/upper /overlay/work
+
+if [ -n "$LIVE_OVERLAY" ]; then
+    # THREE-LAYER OVERLAY (live boot):
+    # - /live-overlay takes precedence over /rootfs
+    # - /overlay/upper takes precedence over everything (writes go here)
+    msg "Using three-layer overlay (live boot with autologin)"
+    if ! busybox mount -t overlay overlay \
+        -o lowerdir=/live-overlay:/rootfs,upperdir=/overlay/upper,workdir=/overlay/work \
+        /newroot; then
+        emergency_shell "Failed to create overlay. Is CONFIG_OVERLAY_FS=y in kernel?"
+    fi
+    # Create marker file so systemd units can detect live boot
+    busybox touch /newroot/live-boot-marker
+else
+    # TWO-LAYER OVERLAY (shouldn't happen from ISO, but handle gracefully)
+    msg "Using two-layer overlay (no live configs)"
+    if ! busybox mount -t overlay overlay \
+        -o lowerdir=/rootfs,upperdir=/overlay/upper,workdir=/overlay/work \
+        /newroot; then
+        emergency_shell "Failed to create overlay. Is CONFIG_OVERLAY_FS=y in kernel?"
+    fi
+fi
+
+# Prepare for switch_root
+msg "Preparing switch_root..."
+
+# Move virtual filesystems to new root
+busybox mount --move /dev /newroot/dev
+busybox mount --move /proc /newroot/proc
+busybox mount --move /sys /newroot/sys
+
+# NOTE: efivarfs mount moved to systemd unit (EFIVARS component)
+# See: leviso/src/component/definitions.rs - EFIVARS component
+# See: .teams/TEAM_114_efivarfs-mount-investigation.md
+
+# Keep ISO mounted at /media/cdrom so recstrap can access filesystem.erofs
+busybox mkdir -p /newroot/media/cdrom
+busybox mount --move /mnt /newroot/media/cdrom
+
+# Verify systemd init exists
+if [ ! -x /newroot/sbin/init ] && [ ! -L /newroot/sbin/init ]; then
+    msg "Contents of /newroot/sbin:"
+    busybox ls -la /newroot/sbin/
+    emergency_shell "/newroot/sbin/init not found or not executable"
+fi
+
+# Final message before handoff
+msg "Switching root to live system..."
+msg ""
+
+# switch_root replaces the current root filesystem and execs init
+# This is the point of no return - systemd takes over from here
+exec busybox switch_root /newroot /sbin/init
+
+# If we get here, something went very wrong
+emergency_shell "switch_root failed"
