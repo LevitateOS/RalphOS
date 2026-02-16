@@ -1,3 +1,10 @@
+//! RalphOS CP0 builder (legacy transition entrypoint).
+//!
+//! # Deprecation Notice
+//!
+//! This CLI is deprecated as the primary RalphOS entrypoint.
+//! New conformance-driven work belongs in `distro-variants/ralph`.
+
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use distro_builder::process::ensure_exists;

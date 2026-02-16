@@ -2,7 +2,7 @@
 name = "ralphos"
 version = "0.1.0"
 edition = "2021"
-description = "RalphOS CP0 builder - bootable ISO from Ralph kernel and Rocky-based payload"
+description = "DEPRECATED: legacy RalphOS crate; active variant work moves to distro-variants/ralph"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/LevitateOS/RalphOS"
 keywords = ["linux", "iso", "headless", "ralphos"]
