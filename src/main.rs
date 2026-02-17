@@ -43,6 +43,15 @@ struct BasePayload {
 }
 
 fn main() {
+    eprintln!(
+        "Deprecated entrypoint blocked: 'ralphos'.\n\
+         Use the new Stage 00 endpoint instead:\n\
+           just build ralph\n\
+         or:\n\
+           cargo run -p distro-builder --bin distro-builder -- iso build ralph"
+    );
+    std::process::exit(2);
+
     let cli = Cli::parse();
     let result = match cli.command.unwrap_or(Commands::Build) {
         Commands::Build | Commands::Iso => build_stage_00(),
