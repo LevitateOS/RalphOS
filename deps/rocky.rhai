@@ -72,12 +72,12 @@ let deps = ["rocky-deps"];
 
 let ctx = #{
     description: "Rocky Linux rootfs (extracted from DVD ISO)",
-    iso_contents_path: "/data/vince/LevitateOS/RalphOS/downloads/iso-contents",
+    iso_contents_path: "/tmp/levitate-legacy-stubs/ralph/deps/iso-contents",
     iso_name: "Rocky-10.1-x86_64-dvd1.iso",
-    iso_path: "/data/vince/LevitateOS/RalphOS/downloads/Rocky-10.1-x86_64-dvd1.iso",
+    iso_path: "/tmp/levitate-legacy-stubs/ralph/deps/Rocky-10.1-x86_64-dvd1.iso",
     name: "rocky",
     packages_path: "",
-    rootfs_path: "/data/vince/LevitateOS/RalphOS/downloads/rootfs",
+    rootfs_path: "/tmp/levitate-legacy-stubs/ralph/rootfs",
     sha256: "55f96d45a052c0ed4f06309480155cb66281a008691eb7f3f359957205b1849a",
     sha256_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM",
     torrent_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.torrent",

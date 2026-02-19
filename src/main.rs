@@ -43,14 +43,16 @@ struct BasePayload {
 }
 
 fn main() {
-    eprintln!(
-        "Deprecated entrypoint blocked: 'ralphos'.\n\
-         Use the new Stage 00 endpoint instead:\n\
-           just build ralph\n\
-         or:\n\
-           cargo run -p distro-builder --bin distro-builder -- iso build ralph"
-    );
-    std::process::exit(2);
+    if std::env::var_os("RALPHOS_ALLOW_LEGACY_ENTRYPOINT").is_none() {
+        eprintln!(
+            "Deprecated entrypoint blocked: 'ralphos'.\n\
+             Use the new Stage 00 endpoint instead:\n\
+               just build ralph\n\
+             or:\n\
+               cargo run -p distro-builder --bin distro-builder -- iso build ralph"
+        );
+        std::process::exit(2);
+    }
 
     let cli = Cli::parse();
     let result = match cli.command.unwrap_or(Commands::Build) {
@@ -232,6 +234,10 @@ fn ensure_ralph_payload(base_dir: &Path, out_dir: &Path) -> Result<BasePayload> 
             &distro_builder::SystemdLiveOverlayConfig {
                 os_name: distro_spec::ralph::OS_NAME,
                 issue_message: None,
+                masked_units: &[],
+                write_serial_test_profile: true,
+                machine_id: None,
+                enforce_utf8_locale_profile: true,
             },
         )?;
     }
@@ -418,6 +424,7 @@ fn build_ralph_initramfs(base_dir: &Path, out_dir: &Path, modules_dir: &Path) ->
         output: initramfs.clone(),
         iso_label: distro_spec::ralph::ISO_LABEL.to_string(),
         rootfs_path: distro_spec::ralph::ROOTFS_ISO_PATH.to_string(),
+        live_overlay_image_path: Some(distro_spec::ralph::LIVE_OVERLAY_ISO_PATH.to_string()),
         live_overlay_path: Some(distro_spec::ralph::LIVE_OVERLAY_ISO_PATH.to_string()),
         boot_devices: distro_spec::ralph::BOOT_DEVICE_PROBE_ORDER
             .iter()
